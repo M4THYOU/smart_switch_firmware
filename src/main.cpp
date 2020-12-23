@@ -198,7 +198,6 @@ void setup() {
         buildInitServer();
     } else {
         Serial.println("We are GOLDEN!");
-        factoryReset();
     }
     
 }
