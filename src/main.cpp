@@ -14,20 +14,9 @@
 #define APPSK  "password" // update this later on. Don't just use "password", obviously.
 #endif
 
-#ifndef CREDENTIALS_FILE_NAME
-#define CREDENTIALS_FILE_NAME "credentials.txt"
-#endif
-
 // Set these to your desired credentials.
 const char *ssid = APSSID;
 const char *password = APPSK;
-
-// Set the filename.
-const char* credentialsFileName = CREDENTIALS_FILE_NAME;
-
-IPAddress local_IP(192,168,4,22);
-IPAddress gateway(192,168,4,9);
-IPAddress subnet(255,255,255,0);
 
 ESP8266WebServer server(80);
 
@@ -171,7 +160,6 @@ void buildInitServer() {
     Serial.print("Configuring access point...");
     
     // You can remove the password parameter if you want the AP to be open.
-    // WiFi.softAPConfig(local_IP, gateway, subnet);
     WiFi.softAP(ssid, password);
 
     IPAddress myIP = WiFi.softAPIP(); // 192.168.4.1 by default.
@@ -205,7 +193,6 @@ void setup() {
 
     // Try reading from the saved file.
     bool connected = attemptConnection();
-    // bool connected = false;
 
     if (!connected) {
         buildInitServer();
