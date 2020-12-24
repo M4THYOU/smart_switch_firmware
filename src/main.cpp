@@ -3,6 +3,8 @@
 ESP8266WebServer server(80);
 WiFiClientSecure wiFiClient;
 
+const uint8_t OUTPUT_PIN = 5;
+
 /// AWS setup ///
 BearSSL::X509List cert(cacert); // for AWS server check.
 BearSSL::X509List client_crt(client_cert); // CERT for the thing.
@@ -253,6 +255,42 @@ void connectToMqtt(bool nonBlocking = false) {
     }
 }
 
+// Assuming the message is of the form:
+//      {"power_on":1}
+// without spaces. That means, payload[12] will have the value to return;
+bool parseMessage(byte *payload, unsigned int len) {
+    // len should always be 14
+    if (len < 14) {
+        throw std::out_of_range{ "len: < 14" };
+    } else if (len != 14) {
+        Serial.println("***");
+        Serial.println("len is not 14");
+        Serial.println("***");
+    }
+    const char c = (char)payload[12];
+    if (!isdigit(c)) {
+        throw std::out_of_range{ "c: is not a number." };
+    }
+    const int i = atoi(&c);
+    if ((i != 0) && (i != 1)) {
+        Serial.println("An error occurred, line 274. payload value is not 0 or 1.");
+        // No error throw, just let it be converted to bool.
+    }
+    return i; // TODO this is most certainly unsafe.
+}
+
+void toggleSwitch(bool turnOn) {
+    if (turnOn) {
+        // turn me on.
+        Serial.println("ON");
+        digitalWrite(OUTPUT_PIN, HIGH);
+    } else {
+        // turn me off.
+        Serial.println("OFF");
+        digitalWrite(OUTPUT_PIN, LOW);
+    }
+}
+
 void messageReceived(char *topic, byte *payload, unsigned int length) {
     Serial.print("Received [");
     Serial.print(topic);
@@ -261,10 +299,14 @@ void messageReceived(char *topic, byte *payload, unsigned int length) {
         Serial.print((char)payload[i]);
     }
     Serial.println();
+
+    bool turnOn = parseMessage(payload, length);
+    toggleSwitch(turnOn);
 }
 
 void setup() {
     Serial.begin(115200);
+    pinMode(OUTPUT_PIN, OUTPUT);
 
     // Set WiFi to station mode and disconnect from an AP if it was previously connected
     WiFi.mode(WIFI_STA);
@@ -294,8 +336,17 @@ void setup() {
 
 void loop() {
     if (WiFi.status() == WL_CONNECTED) {
-        //
-    } else {
+        if (psClient.connected()) {
+            if (psClient.loop()) {
+                // Serial.println("The client is still connected");
+            } else {
+                Serial.println("The client is no longer connected");
+            }
+            delay(50);
+        } else { // not connected to Cloud.
+            connectToMqtt();
+        }
+    } else { // not connected to WiFi.
         server.handleClient();
     }
 }
