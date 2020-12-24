@@ -1,30 +1,33 @@
-#include <Arduino.h>
-#include <ESP8266WiFi.h>
-
-// WifiAccessPoint
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-
-// I/O
-#include <EEPROM.h>
-#include <stdexcept>
-
-#ifndef APSSID
-#define APSSID "myAP"
-#define APPSK  "password" // update this later on. Don't just use "password", obviously.
-#endif
-
-// Set these to your desired credentials.
-const char *ssid = APSSID;
-const char *password = APPSK;
+#include <master.h>
 
 ESP8266WebServer server(80);
+WiFiClientSecure wiFiClient;
+
+/// AWS setup ///
+BearSSL::X509List cert(cacert); // for AWS server check.
+BearSSL::X509List client_crt(client_cert); // CERT for the thing.
+BearSSL::PrivateKey key(privkey); // PK for the thing.
+PubSubClient psClient(wiFiClient);
+const char* awsEndpoint = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com"; // HTTPS Rest endpoint
+const int MQTT_PORT = 8883;
+const char MQTT_SUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
+const char MQTT_PUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
+time_t now;
+time_t nowish = 1510592825;
+#ifdef USE_SUMMER_TIME_DST
+uint8_t DST = 1;
+#else
+uint8_t DST = 0;
+#endif
+
+// Set these to your desired credentials for the accesspoint.
+const char *ssid = "myAP";
+const char *password = "password"; // update this later on. Don't just use "password", obviously.
 
 const std::string baseHtmlStart = "<html><head><meta/><title>Connect to a Network</title><style>body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }</style></head>";
 const std::string baseHtmlEnd = "</html>";
-
 std::string html = "<h1>Available Networks:</h1>";
-std::string network = "";
+std::string network = ""; // don't delete, it IS used.
 
 void scanNetworks() {
     html = "<h1>Available Networks:</h1>";
@@ -182,6 +185,84 @@ void factoryReset() {
     EEPROM.end();
 }
 
+// so AWS can validate the certs. Correctly.
+void NTPConnect(void) {
+    Serial.print("Setting time using SNTP");
+    configTime(TIME_ZONE * 3600, DST * 3600, "pool.ntp.org", "time.nist.gov");
+    now = time(nullptr);
+    while (now < nowish) {
+        delay(500);
+        Serial.print(".");
+        now = time(nullptr);
+    }
+    Serial.println("done!");
+    struct tm timeinfo;
+    gmtime_r(&now, &timeinfo);
+    Serial.print("Current time: ");
+    Serial.print(asctime(&timeinfo));
+}
+
+void pubSubErr(int8_t MQTTErr) {
+    if (MQTTErr == MQTT_CONNECTION_TIMEOUT) {
+        Serial.print("Connection tiemout");
+    } else if (MQTTErr == MQTT_CONNECTION_LOST) {
+        Serial.print("Connection lost");
+    } else if (MQTTErr == MQTT_CONNECT_FAILED) {
+        Serial.print("Connect failed");
+    } else if (MQTTErr == MQTT_DISCONNECTED) {
+        Serial.print("Disconnected");
+    } else if (MQTTErr == MQTT_CONNECTED) {
+        Serial.print("Connected");
+    } else if (MQTTErr == MQTT_CONNECT_BAD_PROTOCOL) {
+        Serial.print("Connect bad protocol");
+    } else if (MQTTErr == MQTT_CONNECT_BAD_CLIENT_ID) {
+        Serial.print("Connect bad Client-ID");
+    } else if (MQTTErr == MQTT_CONNECT_UNAVAILABLE) {
+        Serial.print("Connect unavailable");
+    } else if (MQTTErr == MQTT_CONNECT_BAD_CREDENTIALS) {
+        Serial.print("Connect bad credentials");
+    } else if (MQTTErr == MQTT_CONNECT_UNAUTHORIZED) {
+        Serial.print("Connect unauthorized");
+    }
+}
+
+void connectToMqtt(bool nonBlocking = false) {
+    Serial.print("MQTT connecting ");
+    while (!psClient.connected()) {
+        if (psClient.connect(THINGNAME)) {
+
+            Serial.println("connected!");
+            if (!psClient.subscribe(MQTT_SUB_TOPIC)) {
+                pubSubErr(psClient.state());
+            }
+            
+        } else {
+            Serial.print("failed, reason -> ");
+
+            pubSubErr(psClient.state());
+            if (!nonBlocking) {
+                Serial.println(" < try again in 5 seconds");
+                delay(5000);
+            } else {
+                Serial.println(" <");
+            }
+        }
+        if (nonBlocking) {
+            break;
+        }
+    }
+}
+
+void messageReceived(char *topic, byte *payload, unsigned int length) {
+    Serial.print("Received [");
+    Serial.print(topic);
+    Serial.print("]: ");
+    for (unsigned int i = 0; i < length; i++) {
+        Serial.print((char)payload[i]);
+    }
+    Serial.println();
+}
+
 void setup() {
     Serial.begin(115200);
 
@@ -198,10 +279,23 @@ void setup() {
         buildInitServer();
     } else {
         Serial.println("We are GOLDEN!");
+        NTPConnect(); // get current time, otherwise certificates are flagged as expired
+
+        wiFiClient.setTrustAnchors(&cert);
+        wiFiClient.setClientRSACert(&client_crt, &key);
+
+        psClient.setServer(awsEndpoint, MQTT_PORT);
+        psClient.setCallback(messageReceived);
+
+        connectToMqtt();
     }
     
 }
 
 void loop() {
-    server.handleClient();
+    if (WiFi.status() == WL_CONNECTED) {
+        //
+    } else {
+        server.handleClient();
+    }
 }
