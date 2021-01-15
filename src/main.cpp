@@ -11,6 +11,7 @@ BearSSL::X509List client_crt(client_cert); // CERT for the thing.
 BearSSL::PrivateKey key(privkey); // PK for the thing.
 PubSubClient psClient(wiFiClient);
 const char* awsEndpoint = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com"; // HTTPS Rest endpoint
+
 const int MQTT_PORT = 8883;
 const char MQTT_SUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
 const char MQTT_PUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
@@ -52,7 +53,7 @@ void handleRoot() {
     server.send(200, "text/html", temp.c_str());
 }
 
-void connectToNetwork(const char* ntwrk, const char* pwd) {
+bool connectToNetwork(const char* ntwrk, const char* pwd) {
     WiFi.begin(ntwrk, pwd);
     Serial.print("Connecting...");
     int j = 0;
@@ -62,13 +63,14 @@ void connectToNetwork(const char* ntwrk, const char* pwd) {
         j++;
     }
     if (WiFi.status() != WL_CONNECTED) {
-        throw std::out_of_range{ "Failed to connect" };
+        return false;        
     }
     Serial.println("");
     Serial.print("Connected to ");
     Serial.println(ssid);
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
+    return true;
 }
 
 void saveCredentials(const char* ntwrk, const char* pwd) {
@@ -123,11 +125,16 @@ void handleForm() {
         server.send(405, "text/plain", "Method Not Allowed");
     } else {
         std::string password = server.arg(0).c_str();
-        connectToNetwork(network.c_str(), password.c_str());
+        bool isSuccess = connectToNetwork(network.c_str(), password.c_str());
+
+        if (!isSuccess) {
+            Serial.println("failed to connect.");
+            // TODO make the error handling form the form more robust.
+            return;
+        }
 
         // save credentials.
         handleWiFiConnect(network.c_str(), password.c_str());
-
         server.send(200, "text/plain", ("Successfully connected to " + network).c_str());
     }
 }
@@ -149,13 +156,7 @@ bool attemptConnection() {
         Serial.println("Found network, but no password.");
         return false;
     }
-
-    try {
-        connectToNetwork(data.network, data.password);
-    } catch (std::out_of_range e) {
-        return false;
-    }
-    return true;
+    return connectToNetwork(data.network, data.password);
 }
 
 void buildInitServer() {
@@ -255,6 +256,8 @@ void connectToMqtt(bool nonBlocking = false) {
     }
 }
 
+// Publish to topic: $aws/things/<thing-name>/shadow/update
+//      In our case: $aws/things/esp8266/shadow/update
 // Assuming the message is of the form:
 //      {"power_on":1}
 // without spaces. That means, payload[12] will have the value to return;
@@ -315,7 +318,9 @@ void setup() {
     Serial.println();
 
     // Try reading from the saved file.
+    Serial.println("attemptConnection Start");
     bool connected = attemptConnection();
+    Serial.println("attemptConnection Complete");
 
     if (!connected) {
         buildInitServer();
