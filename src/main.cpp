@@ -13,8 +13,21 @@ PubSubClient psClient(wiFiClient);
 const char* awsEndpoint = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com"; // HTTPS Rest endpoint
 
 const int MQTT_PORT = 8883;
-const char MQTT_SUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
-const char MQTT_PUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
+// Sub topics
+const char* MQTT_SUB_TOPICS[] = {
+    "$aws/things/" THINGNAME "/shadow/update",
+    "$aws/things/" THINGNAME "/shadow/update/accepted",
+    "$aws/things/" THINGNAME "/shadow/update/rejected",
+    "$aws/things/" THINGNAME "/shadow/update/delta",
+
+    // "$aws/things/" THINGNAME "/shadow/get",
+    "$aws/things/" THINGNAME "/shadow/get/accepted",
+    "$aws/things/" THINGNAME "/shadow/get/rejected",
+};
+// const char MQTT_SUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
+
+const char MQTT_PUB_GET_TOPIC[] = "$aws/things/" THINGNAME "/shadow/get";
+const char MQTT_PUB_UPDATE_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
 time_t now;
 time_t nowish = 1510592825;
 #ifdef USE_SUMMER_TIME_DST
@@ -229,16 +242,60 @@ void pubSubErr(int8_t MQTTErr) {
     }
 }
 
+void sendData(void) {
+    /*
+  DynamicJsonDocument jsonBuffer(JSON_OBJECT_SIZE(3) + 100);
+  JsonObject root = jsonBuffer.to<JsonObject>();
+  JsonObject state = root.createNestedObject("state");
+  JsonObject state_reported = state.createNestedObject("reported");
+  state_reported["value"] = random(100);
+  Serial.printf("Sending  [%s]: ", MQTT_PUB_TOPIC);
+  serializeJson(root, Serial);
+  Serial.println();
+  char shadow[measureJson(root) + 1];
+  serializeJson(root, shadow, sizeof(shadow));
+
+  if (!psClient.publish(MQTT_PUB_TOPIC, shadow, false)) {
+      pubSubErr(psClient.state());
+  }*/
+  
+}
+
+void attemptPub(const char* topic, const char* payload, boolean retained) {
+    if (!psClient.publish(topic, payload, retained)) {
+        pubSubErr(psClient.state());
+    } else {
+        // Serial.println("got it apparently");
+    }
+}
+
+void getShadowState() {
+    attemptPub(MQTT_PUB_GET_TOPIC, "", false);
+}
+
+void attemptSub(const char* topic) {
+    if (!psClient.subscribe(topic)) {
+        pubSubErr(psClient.state());
+    } else {
+        Serial.print("Successfully subbed to ");
+        Serial.println(topic);
+    }
+}
+
 void connectToMqtt(bool nonBlocking = false) {
     Serial.print("MQTT connecting ");
     while (!psClient.connected()) {
         if (psClient.connect(THINGNAME)) {
 
             Serial.println("connected!");
-            if (!psClient.subscribe(MQTT_SUB_TOPIC)) {
-                pubSubErr(psClient.state());
+
+            size_t i = 0;
+            for( i = 0; i < sizeof(MQTT_SUB_TOPICS) / sizeof(MQTT_SUB_TOPICS[0]); i++) {
+                attemptSub(MQTT_SUB_TOPICS[i]);
             }
-            
+
+            Serial.println("Getting shadow state");
+            getShadowState();
         } else {
             Serial.print("failed, reason -> ");
 
@@ -259,7 +316,7 @@ void connectToMqtt(bool nonBlocking = false) {
 // Publish to topic: $aws/things/<thing-name>/shadow/update
 //      In our case: $aws/things/esp8266/shadow/update
 // Assuming the message is of the form:
-//      {"power_on":1}
+//      {"on":1}
 // without spaces. That means, payload[12] will have the value to return;
 bool parseMessage(byte *payload, unsigned int len) {
     // len should always be 14
@@ -303,8 +360,8 @@ void messageReceived(char *topic, byte *payload, unsigned int length) {
     }
     Serial.println();
 
-    bool turnOn = parseMessage(payload, length);
-    toggleSwitch(turnOn);
+    // bool turnOn = parseMessage(payload, length);
+    // toggleSwitch(turnOn);
 }
 
 void setup() {
@@ -349,6 +406,7 @@ void loop() {
             }
             delay(50);
         } else { // not connected to Cloud.
+            // Serial.println("not connected to Cloud");
             connectToMqtt();
         }
     } else { // not connected to WiFi.
