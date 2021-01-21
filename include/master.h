@@ -1,5 +1,6 @@
 // Required
 #include <Arduino.h>
+#include <ArduinoJson.h>
 
 // WiFi stuff
 #include <ESP8266WiFi.h>

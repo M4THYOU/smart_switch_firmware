@@ -3,6 +3,7 @@
 ESP8266WebServer server(80);
 WiFiClientSecure wiFiClient;
 
+bool isOn = 0;
 const uint8_t OUTPUT_PIN = 5;
 
 /// AWS setup ///
@@ -15,14 +16,12 @@ const char* awsEndpoint = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com"; // H
 const int MQTT_PORT = 8883;
 // Sub topics
 const char* MQTT_SUB_TOPICS[] = {
+    THINGNAME "/get/accepted",
+    THINGNAME "/get/rejected",
     "$aws/things/" THINGNAME "/shadow/update",
     "$aws/things/" THINGNAME "/shadow/update/accepted",
     "$aws/things/" THINGNAME "/shadow/update/rejected",
-    "$aws/things/" THINGNAME "/shadow/update/delta",
-
-    // "$aws/things/" THINGNAME "/shadow/get",
-    "$aws/things/" THINGNAME "/shadow/get/accepted",
-    "$aws/things/" THINGNAME "/shadow/get/rejected",
+    "$aws/things/" THINGNAME "/shadow/update/delta"
 };
 // const char MQTT_SUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
 
@@ -313,55 +312,47 @@ void connectToMqtt(bool nonBlocking = false) {
     }
 }
 
-// Publish to topic: $aws/things/<thing-name>/shadow/update
-//      In our case: $aws/things/esp8266/shadow/update
-// Assuming the message is of the form:
-//      {"on":1}
-// without spaces. That means, payload[12] will have the value to return;
-bool parseMessage(byte *payload, unsigned int len) {
-    // len should always be 14
-    if (len < 14) {
-        throw std::out_of_range{ "len: < 14" };
-    } else if (len != 14) {
-        Serial.println("***");
-        Serial.println("len is not 14");
-        Serial.println("***");
-    }
-    const char c = (char)payload[12];
-    if (!isdigit(c)) {
-        throw std::out_of_range{ "c: is not a number." };
-    }
-    const int i = atoi(&c);
-    if ((i != 0) && (i != 1)) {
-        Serial.println("An error occurred, line 274. payload value is not 0 or 1.");
-        // No error throw, just let it be converted to bool.
-    }
-    return i; // TODO this is most certainly unsafe.
-}
-
 void toggleSwitch(bool turnOn) {
-    if (turnOn) {
+    if (turnOn && !isOn) {
         // turn me on.
         Serial.println("ON");
         digitalWrite(OUTPUT_PIN, HIGH);
-    } else {
+        isOn = true;
+    } else if (!turnOn && isOn) {
         // turn me off.
         Serial.println("OFF");
         digitalWrite(OUTPUT_PIN, LOW);
+        isOn = false;
     }
+}
+
+void printPayload(byte *payload, unsigned int length) {
+    for (unsigned int i = 0; i < length; i++) {
+        Serial.print((char)payload[i]);
+    }
+    Serial.println();
 }
 
 void messageReceived(char *topic, byte *payload, unsigned int length) {
     Serial.print("Received [");
     Serial.print(topic);
     Serial.print("]: ");
-    for (unsigned int i = 0; i < length; i++) {
-        Serial.print((char)payload[i]);
-    }
-    Serial.println();
 
-    // bool turnOn = parseMessage(payload, length);
-    // toggleSwitch(turnOn);
+    std::string topic_s = topic;
+    if (topic_s == MQTT_SUB_TOPICS[0]) { // THINGNAME "/get/accepted",
+        // parse the json and update current state.
+        const std::string json_s = (char *) payload;
+        DynamicJsonDocument doc(128);
+        deserializeJson(doc, json_s);
+        const int shouldTurnOn = doc["state"]["on"];
+        Serial.println(shouldTurnOn);
+        toggleSwitch(shouldTurnOn);
+
+    } else if (topic_s == MQTT_SUB_TOPICS[1]) { // THINGNAME "/get/rejected"
+        printPayload(payload, length);
+    } else {
+        printPayload(payload, length);
+    }
 }
 
 void setup() {
