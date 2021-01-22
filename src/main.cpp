@@ -18,12 +18,11 @@ const int MQTT_PORT = 8883;
 const char* MQTT_SUB_TOPICS[] = {
     THINGNAME "/get/accepted",
     THINGNAME "/get/rejected",
+    THINGNAME "/update/delta",
     "$aws/things/" THINGNAME "/shadow/update",
-    "$aws/things/" THINGNAME "/shadow/update/accepted",
-    "$aws/things/" THINGNAME "/shadow/update/rejected",
-    "$aws/things/" THINGNAME "/shadow/update/delta"
+    // "$aws/things/" THINGNAME "/shadow/update/accepted",
+    // "$aws/things/" THINGNAME "/shadow/update/rejected",
 };
-// const char MQTT_SUB_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
 
 const char MQTT_PUB_GET_TOPIC[] = "$aws/things/" THINGNAME "/shadow/get";
 const char MQTT_PUB_UPDATE_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
@@ -347,9 +346,15 @@ void messageReceived(char *topic, byte *payload, unsigned int length) {
         const int shouldTurnOn = doc["state"]["on"];
         Serial.println(shouldTurnOn);
         toggleSwitch(shouldTurnOn);
-
     } else if (topic_s == MQTT_SUB_TOPICS[1]) { // THINGNAME "/get/rejected"
         printPayload(payload, length);
+    } else if (topic_s == MQTT_SUB_TOPICS[2]) { // THINGNAME "/update/delta",
+        const std::string json_s = (char *) payload;
+        DynamicJsonDocument doc(128);
+        deserializeJson(doc, json_s);
+        const int shouldTurnOn = doc["state"]["on"];
+        Serial.println(shouldTurnOn);
+        toggleSwitch(shouldTurnOn);
     } else {
         printPayload(payload, length);
     }
