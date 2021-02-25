@@ -6,12 +6,14 @@ WiFiClientSecure wiFiClient;
 bool isOn = 0;
 const uint8_t OUTPUT_PIN = 5;
 
+int8_t TIME_ZONE = -5; //NYC(USA): -5 UTC
+//#define USE_SUMMER_TIME_DST  //uncomment to use DST
+
 /// AWS setup ///
 BearSSL::X509List cert(cacert); // for AWS server check.
 BearSSL::X509List client_crt(client_cert); // CERT for the thing.
 BearSSL::PrivateKey key(privkey); // PK for the thing.
 PubSubClient psClient(wiFiClient);
-const char* awsEndpoint = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com"; // HTTPS Rest endpoint
 
 const int MQTT_PORT = 8883;
 // Sub topics
@@ -384,7 +386,7 @@ void setup() {
         wiFiClient.setTrustAnchors(&cert);
         wiFiClient.setClientRSACert(&client_crt, &key);
 
-        psClient.setServer(awsEndpoint, MQTT_PORT);
+        psClient.setServer(MQTT_HOST, MQTT_PORT);
         psClient.setCallback(messageReceived);
 
         connectToMqtt();
