@@ -37,8 +37,7 @@ uint8_t DST = 0;
 #endif
 
 // Set these to your desired credentials for the accesspoint.
-const char *ssid = "myAP";
-const char *password = "password"; // update this later on. Don't just use "password", obviously.
+const char *ssid = THINGNAME;
 
 const std::string baseHtmlStart = "<html><head><meta/><title>Connect to a Network</title><style>body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }</style></head>";
 const std::string baseHtmlEnd = "</html>";
