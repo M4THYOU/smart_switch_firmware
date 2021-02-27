@@ -2,3 +2,4 @@
 .vscode
 certs/
 include/certs.h
+certs.h.old
