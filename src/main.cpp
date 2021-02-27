@@ -1,5 +1,8 @@
 #include <master.h>
 
+// ALSO DOUBLES AS AWS_ENDPOINT
+const char MQTT_HOST[] = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com";
+
 ESP8266WebServer server(80);
 WiFiClientSecure wiFiClient;
 
