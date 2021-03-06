@@ -1,7 +1,10 @@
 #include <master.h>
 
 // ALSO DOUBLES AS AWS_ENDPOINT
-const char MQTT_HOST[] = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com";
+// const char MQTT_HOST[] = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com";
+// const int MQTT_PORT = 8883;
+const char MQTT_HOST[] = "192.168.2.37";
+const int MQTT_PORT = 8883;
 
 ESP8266WebServer server(80);
 WiFiClientSecure wiFiClient;
@@ -14,23 +17,22 @@ int8_t TIME_ZONE = -5; //NYC(USA): -5 UTC
 
 /// AWS setup ///
 BearSSL::X509List cert(cacert); // for AWS server check.
-BearSSL::X509List client_crt(client_cert); // CERT for the thing.
+BearSSL::X509List clientcrt(client_cert); // CERT for the thing.
 BearSSL::PrivateKey key(privkey); // PK for the thing.
 PubSubClient psClient(wiFiClient);
 
-const int MQTT_PORT = 8883;
 // Sub topics
 const char* MQTT_SUB_TOPICS[] = {
     THINGNAME "/get/accepted",
     THINGNAME "/get/rejected",
     THINGNAME "/update/delta",
-    "$aws/things/" THINGNAME "/shadow/update",
-    // "$aws/things/" THINGNAME "/shadow/update/accepted",
-    // "$aws/things/" THINGNAME "/shadow/update/rejected",
+    "aws/things/" THINGNAME "/shadow/update",
+    // "aws/things/" THINGNAME "/shadow/update/accepted",
+    // "aws/things/" THINGNAME "/shadow/update/rejected",
 };
 
-const char MQTT_PUB_GET_TOPIC[] = "$aws/things/" THINGNAME "/shadow/get";
-const char MQTT_PUB_UPDATE_TOPIC[] = "$aws/things/" THINGNAME "/shadow/update";
+const char MQTT_PUB_GET_TOPIC[] = "aws/things/" THINGNAME "/shadow/get";
+const char MQTT_PUB_UPDATE_TOPIC[] = "aws/things/" THINGNAME "/shadow/update";
 time_t now;
 time_t nowish = 1510592825;
 #ifdef USE_SUMMER_TIME_DST
@@ -287,6 +289,7 @@ void attemptSub(const char* topic) {
 void connectToMqtt(bool nonBlocking = false) {
     Serial.print("MQTT connecting ");
     while (!psClient.connected()) {
+        // Want QoS 1: connect(THINGNAME, NULL, NULL, 0, 1, 0, 0, 1)
         if (psClient.connect(THINGNAME)) {
 
             Serial.println("connected!");
@@ -386,7 +389,7 @@ void setup() {
         NTPConnect(); // get current time, otherwise certificates are flagged as expired
 
         wiFiClient.setTrustAnchors(&cert);
-        wiFiClient.setClientRSACert(&client_crt, &key);
+        wiFiClient.setClientRSACert(&clientcrt, &key);
 
         psClient.setServer(MQTT_HOST, MQTT_PORT);
         psClient.setCallback(messageReceived);
