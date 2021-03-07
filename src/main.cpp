@@ -6,6 +6,7 @@
 const char MQTT_HOST[] = "192.168.2.14";
 IPAddress address;
 const int MQTT_PORT = 8883;
+const int MQTT_KEEP_ALIVE = 3600; // 1 hour.
 
 ESP8266WebServer server(80);
 WiFiClientSecure wiFiClient;
@@ -24,16 +25,10 @@ PubSubClient psClient(wiFiClient);
 
 // Sub topics
 const char* MQTT_SUB_TOPICS[] = {
-    THINGNAME "/get/accepted",
-    THINGNAME "/get/rejected",
-    THINGNAME "/update/delta",
-    "aws/things/" THINGNAME "/shadow/update",
-    // "aws/things/" THINGNAME "/shadow/update/accepted",
-    // "aws/things/" THINGNAME "/shadow/update/rejected",
+    THINGNAME "/state"
 };
 
-const char MQTT_PUB_GET_TOPIC[] = "aws/things/" THINGNAME "/shadow/get";
-const char MQTT_PUB_UPDATE_TOPIC[] = "aws/things/" THINGNAME "/shadow/update";
+const char MQTT_PUB_TOPIC[] = THINGNAME "/state";
 time_t now;
 time_t nowish = 1510592825;
 #ifdef USE_SUMMER_TIME_DST
@@ -275,7 +270,7 @@ void attemptPub(const char* topic, const char* payload, boolean retained) {
 }
 
 void getShadowState() {
-    attemptPub(MQTT_PUB_GET_TOPIC, "", false);
+    attemptPub(MQTT_PUB_TOPIC, "{\"state\":{\"on\":0}}", true);
 }
 
 void attemptSub(const char* topic) {
@@ -290,9 +285,7 @@ void attemptSub(const char* topic) {
 void connectToMqtt(bool nonBlocking = false) {
     Serial.print("MQTT connecting ");
     while (!psClient.connected()) {
-        // Want QoS 1: connect(THINGNAME, NULL, NULL, 0, 1, 0, 0, 1)
-        if (psClient.connect(THINGNAME)) {
-
+        if (psClient.connect(THINGNAME, THINGNAME, "pass1", 0, 1, 0, 0, 1)) {
             Serial.println("connected!");
 
             size_t i = 0;
@@ -301,6 +294,7 @@ void connectToMqtt(bool nonBlocking = false) {
             }
 
             Serial.println("Getting shadow state");
+            // Don't need to get the shadow state when messages are retained.
             getShadowState();
         } else {
             Serial.print("failed, reason -> ");
@@ -340,23 +334,15 @@ void printPayload(byte *payload, unsigned int length) {
     Serial.println();
 }
 
+// This is the expected payload: {\"state\":{\"on\":1}}
 void messageReceived(char *topic, byte *payload, unsigned int length) {
     Serial.print("Received [");
     Serial.print(topic);
     Serial.print("]: ");
 
     std::string topic_s = topic;
-    if (topic_s == MQTT_SUB_TOPICS[0]) { // THINGNAME "/get/accepted",
+    if (topic_s == MQTT_SUB_TOPICS[0]) { // THINGNAME "/state",
         // parse the json and update current state.
-        const std::string json_s = (char *) payload;
-        DynamicJsonDocument doc(128);
-        deserializeJson(doc, json_s);
-        const int shouldTurnOn = doc["state"]["on"];
-        Serial.println(shouldTurnOn);
-        toggleSwitch(shouldTurnOn);
-    } else if (topic_s == MQTT_SUB_TOPICS[1]) { // THINGNAME "/get/rejected"
-        printPayload(payload, length);
-    } else if (topic_s == MQTT_SUB_TOPICS[2]) { // THINGNAME "/update/delta",
         const std::string json_s = (char *) payload;
         DynamicJsonDocument doc(128);
         deserializeJson(doc, json_s);
@@ -397,6 +383,8 @@ void setup() {
         psClient.setServer(address, MQTT_PORT);
         // psClient.setServer(MQTT_HOST, MQTT_PORT);
         psClient.setCallback(messageReceived);
+
+        psClient.setKeepAlive(MQTT_KEEP_ALIVE);
 
         connectToMqtt();
     }
