@@ -3,7 +3,8 @@
 // ALSO DOUBLES AS AWS_ENDPOINT
 // const char MQTT_HOST[] = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com";
 // const int MQTT_PORT = 8883;
-const char MQTT_HOST[] = "192.168.2.37";
+const char MQTT_HOST[] = "192.168.2.14";
+IPAddress address;
 const int MQTT_PORT = 8883;
 
 ESP8266WebServer server(80);
@@ -391,7 +392,10 @@ void setup() {
         wiFiClient.setTrustAnchors(&cert);
         wiFiClient.setClientRSACert(&clientcrt, &key);
 
-        psClient.setServer(MQTT_HOST, MQTT_PORT);
+        // Only if we use a raw IP Address for MQTT_HOST.
+        address.fromString(MQTT_HOST);
+        psClient.setServer(address, MQTT_PORT);
+        // psClient.setServer(MQTT_HOST, MQTT_PORT);
         psClient.setCallback(messageReceived);
 
         connectToMqtt();
