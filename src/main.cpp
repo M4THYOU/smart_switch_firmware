@@ -11,8 +11,12 @@ const int MQTT_KEEP_ALIVE = 3600; // 1 hour.
 ESP8266WebServer server(80);
 WiFiClientSecure wiFiClient;
 
+// All about the button state.
 bool isOn = 0;
+bool isPressed = 0;
+bool wasPressed = 0;
 const uint8_t OUTPUT_PIN = 5;
+const uint8_t PUSH_PIN = 10;
 
 int8_t TIME_ZONE = -5; //NYC(USA): -5 UTC
 //#define USE_SUMMER_TIME_DST  //uncomment to use DST
@@ -44,6 +48,16 @@ const std::string baseHtmlStart = "<html><head><meta/><title>Connect to a Networ
 const std::string baseHtmlEnd = "</html>";
 std::string html = "<h1>Available Networks:</h1>";
 std::string network = ""; // don't delete, it IS used.
+
+// Wipes EEPROM. Generally just used for testing purposes.
+void factoryReset() {
+    EEPROM.begin(512);
+    // write 0 to all 512 bytes.
+    for (int i = 0; i < 512; i++) {
+        EEPROM.write(i, 0);
+    }
+    EEPROM.end();
+}
 
 void scanNetworks() {
     html = "<h1>Available Networks:</h1>";
@@ -191,16 +205,6 @@ void buildInitServer() {
     Serial.println("HTTP server started");
 }
 
-// Wipes EEPROM. Generally just used for testing purposes.
-void factoryReset() {
-    EEPROM.begin(512);
-    // write 0 to all 512 bytes.
-    for (int i = 0; i < 512; i++) {
-        EEPROM.write(i, 0);
-    }
-    EEPROM.end();
-}
-
 // so AWS can validate the certs. Correctly.
 void NTPConnect(void) {
     Serial.print("Setting time using SNTP");
@@ -326,6 +330,13 @@ void toggleSwitch(bool turnOn) {
         isOn = false;
     }
 }
+void toggleSwitchAndUpdateState(bool turnOn) {
+    toggleSwitch(turnOn);
+    char numStr[30];
+    std::string state = itoa(int(turnOn), numStr, 10);
+    const char* payload = ("{\"state\":{\"on\":" + state + "}}").c_str();
+    attemptPub(MQTT_PUB_TOPIC, payload, true);
+}
 
 void printPayload(byte *payload, unsigned int length) {
     for (unsigned int i = 0; i < length; i++) {
@@ -357,6 +368,7 @@ void messageReceived(char *topic, byte *payload, unsigned int length) {
 void setup() {
     Serial.begin(115200);
     pinMode(OUTPUT_PIN, OUTPUT);
+    pinMode(PUSH_PIN, INPUT_PULLUP);
 
     // Set WiFi to station mode and disconnect from an AP if it was previously connected
     WiFi.mode(WIFI_STA);
@@ -392,6 +404,19 @@ void setup() {
 }
 
 void loop() {
+    // First handle the switch.
+    if (digitalRead(PUSH_PIN) == LOW) {
+        Serial.println("PRESSING?");
+        isPressed = 1;
+        wasPressed = 1;
+    } else {
+        isPressed = 0;
+    }
+    if (!isPressed && wasPressed) {
+        toggleSwitchAndUpdateState(!isOn);
+        wasPressed = 0;
+    }
+
     if (WiFi.status() == WL_CONNECTED) {
         if (psClient.connected()) {
             if (psClient.loop()) {
