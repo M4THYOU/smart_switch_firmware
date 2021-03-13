@@ -165,7 +165,7 @@ void handleForm() {
     }
 }
 
-bool attemptConnection() {
+bool attemptNetworkConnection() {
     uint addr = 0;
     EEPROM.begin(512);
     struct {
@@ -253,10 +253,6 @@ void attemptPub(const char* topic, const char* payload, boolean retained) {
     }
 }
 
-void getShadowState() {
-    attemptPub(MQTT_PUB_TOPIC, "{\"state\":{\"on\":0}}", true);
-}
-
 void attemptSub(const char* topic) {
     if (!psClient.subscribe(topic)) {
         pubSubErr(psClient.state());
@@ -266,34 +262,20 @@ void attemptSub(const char* topic) {
     }
 }
 
-void connectToMqtt(bool nonBlocking = false) {
-    Serial.print("MQTT connecting ");
-    while (!psClient.connected()) {
-        if (psClient.connect(THINGNAME, THINGNAME, "pass1", 0, 1, 0, 0, 1)) {
-            Serial.println("connected!");
+void attemptBrokerConnection() {
+    if (psClient.connect(THINGNAME, THINGNAME, "pass1", 0, 1, 0, 0, 1)) {
+        Serial.println("connected!");
 
-            size_t i = 0;
-            for( i = 0; i < sizeof(MQTT_SUB_TOPICS) / sizeof(MQTT_SUB_TOPICS[0]); i++) {
-                attemptSub(MQTT_SUB_TOPICS[i]);
-            }
-
-            Serial.println("Getting shadow state");
-            // Don't need to get the shadow state when messages are retained.
-            getShadowState();
-        } else {
-            Serial.print("failed, reason -> ");
-
-            pubSubErr(psClient.state());
-            if (!nonBlocking) {
-                Serial.println(" < try again in 5 seconds");
-                delay(5000);
-            } else {
-                Serial.println(" <");
-            }
+        size_t i = 0;
+        for( i = 0; i < sizeof(MQTT_SUB_TOPICS) / sizeof(MQTT_SUB_TOPICS[0]); i++) {
+            attemptSub(MQTT_SUB_TOPICS[i]);
         }
-        if (nonBlocking) {
-            break;
-        }
+
+        Serial.println("Getting shadow state");
+    } else {
+        Serial.print("failed, reason -> ");
+        pubSubErr(psClient.state());
+        Serial.println(" < try again");
     }
 }
 
@@ -357,9 +339,9 @@ void setup() {
     Serial.println();
 
     // Try reading from the saved file.
-    Serial.println("attemptConnection Start");
-    bool connected = attemptConnection();
-    Serial.println("attemptConnection Complete");
+    Serial.println("attemptNetworkConnection Start");
+    bool connected = attemptNetworkConnection();
+    Serial.println("attemptNetworkConnection Complete");
 
     if (!connected) {
         buildInitServer();
@@ -378,7 +360,7 @@ void setup() {
 
         psClient.setKeepAlive(MQTT_KEEP_ALIVE);
 
-        connectToMqtt();
+        // connectToMqtt();
     }
     
 }
@@ -404,9 +386,9 @@ void loop() {
                 Serial.println("The client is no longer connected");
             }
             delay(50);
-        } else { // not connected to Cloud.
-            // Serial.println("not connected to Cloud");
-            connectToMqtt();
+        } else { // not connected to broker.
+            // Serial.println("not connected to broker");
+            attemptBrokerConnection();
         }
     } else { // not connected to WiFi.
         server.handleClient();
