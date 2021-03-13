@@ -27,12 +27,11 @@ BearSSL::X509List clientcrt(client_cert); // CERT for the thing.
 BearSSL::PrivateKey key(privkey); // PK for the thing.
 PubSubClient psClient(wiFiClient);
 
+const char MQTT_PUB_TOPIC[] = "thing/switch/" THINGNAME "/state";
 // Sub topics
 const char* MQTT_SUB_TOPICS[] = {
-    THINGNAME "/state"
+    MQTT_PUB_TOPIC
 };
-
-const char MQTT_PUB_TOPIC[] = THINGNAME "/state";
 time_t now;
 time_t nowish = 1510592825;
 #ifdef USE_SUMMER_TIME_DST
@@ -246,25 +245,6 @@ void pubSubErr(int8_t MQTTErr) {
     }
 }
 
-void sendData(void) {
-    /*
-  DynamicJsonDocument jsonBuffer(JSON_OBJECT_SIZE(3) + 100);
-  JsonObject root = jsonBuffer.to<JsonObject>();
-  JsonObject state = root.createNestedObject("state");
-  JsonObject state_reported = state.createNestedObject("reported");
-  state_reported["value"] = random(100);
-  Serial.printf("Sending  [%s]: ", MQTT_PUB_TOPIC);
-  serializeJson(root, Serial);
-  Serial.println();
-  char shadow[measureJson(root) + 1];
-  serializeJson(root, shadow, sizeof(shadow));
-
-  if (!psClient.publish(MQTT_PUB_TOPIC, shadow, false)) {
-      pubSubErr(psClient.state());
-  }*/
-  
-}
-
 void attemptPub(const char* topic, const char* payload, boolean retained) {
     if (!psClient.publish(topic, payload, retained)) {
         pubSubErr(psClient.state());
@@ -406,7 +386,6 @@ void setup() {
 void loop() {
     // First handle the switch.
     if (digitalRead(PUSH_PIN) == LOW) {
-        Serial.println("PRESSING?");
         isPressed = 1;
         wasPressed = 1;
     } else {
