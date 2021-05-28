@@ -6,11 +6,15 @@ const char MQTT_HOST[] = "a2eis0wug3zm6u-ats.iot.us-east-2.amazonaws.com";
 ESP8266WebServer server(80);
 WiFiClientSecure wiFiClient;
 
-bool isOn = 0;
-const uint8_t OUTPUT_PIN = 5;
-
 int8_t TIME_ZONE = -5; //NYC(USA): -5 UTC
-//#define USE_SUMMER_TIME_DST  //uncomment to use DST
+#define USE_SUMMER_TIME_DST  //uncomment to use DST
+
+// All about the button state.
+bool isOn = 0;
+bool isPressed = 0;
+bool wasPressed = 0;
+const uint8_t OUTPUT_PIN = 5;
+const uint8_t PUSH_PIN = 10;
 
 /// AWS setup ///
 BearSSL::X509List cert(cacert); // for AWS server check.
@@ -244,25 +248,6 @@ void pubSubErr(int8_t MQTTErr) {
     }
 }
 
-void sendData(void) {
-    /*
-  DynamicJsonDocument jsonBuffer(JSON_OBJECT_SIZE(3) + 100);
-  JsonObject root = jsonBuffer.to<JsonObject>();
-  JsonObject state = root.createNestedObject("state");
-  JsonObject state_reported = state.createNestedObject("reported");
-  state_reported["value"] = random(100);
-  Serial.printf("Sending  [%s]: ", MQTT_PUB_TOPIC);
-  serializeJson(root, Serial);
-  Serial.println();
-  char shadow[measureJson(root) + 1];
-  serializeJson(root, shadow, sizeof(shadow));
-
-  if (!psClient.publish(MQTT_PUB_TOPIC, shadow, false)) {
-      pubSubErr(psClient.state());
-  }*/
-  
-}
-
 void attemptPub(const char* topic, const char* payload, boolean retained) {
     if (!psClient.publish(topic, payload, retained)) {
         pubSubErr(psClient.state());
@@ -328,6 +313,13 @@ void toggleSwitch(bool turnOn) {
         isOn = false;
     }
 }
+void toggleSwitchAndUpdateState(bool turnOn) {
+    toggleSwitch(turnOn);
+    char numStr[30];
+    std::string state = itoa(int(turnOn), numStr, 10);
+    const char* payload = ("{\"state\":{\"desired\":{\"on\":" + state + "}}}").c_str();
+    attemptPub(MQTT_PUB_UPDATE_TOPIC, payload, false);
+}
 
 void printPayload(byte *payload, unsigned int length) {
     for (unsigned int i = 0; i < length; i++) {
@@ -367,6 +359,7 @@ void messageReceived(char *topic, byte *payload, unsigned int length) {
 void setup() {
     Serial.begin(115200);
     pinMode(OUTPUT_PIN, OUTPUT);
+    pinMode(PUSH_PIN, INPUT_PULLUP);
 
     // Set WiFi to station mode and disconnect from an AP if it was previously connected
     WiFi.mode(WIFI_STA);
@@ -397,6 +390,18 @@ void setup() {
 }
 
 void loop() {
+    // First handle the switch.
+    if (digitalRead(PUSH_PIN) == LOW) {
+        isPressed = 1;
+        wasPressed = 1;
+    } else {
+        isPressed = 0;
+    }
+    if (!isPressed && wasPressed) {
+        toggleSwitchAndUpdateState(!isOn);
+        wasPressed = 0;
+    }
+
     if (WiFi.status() == WL_CONNECTED) {
         if (psClient.connected()) {
             if (psClient.loop()) {
@@ -406,7 +411,7 @@ void loop() {
             }
             delay(50);
         } else { // not connected to Cloud.
-            // Serial.println("not connected to Cloud");
+            Serial.println("not connected to Cloud");
             connectToMqtt();
         }
     } else { // not connected to WiFi.
